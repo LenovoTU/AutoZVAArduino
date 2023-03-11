@@ -40,7 +40,6 @@ class MeasurmentsThread(QtCore.QThread):
 
 # For ZVA - 40
 # Testing push
-# Tesitn on main
 class InstrumentThread(QtCore.QThread):
     signalSaveData2 = QtCore.pyqtSignal(str)
 
