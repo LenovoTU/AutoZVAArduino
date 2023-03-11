@@ -38,7 +38,8 @@ class MeasurmentsThread(QtCore.QThread):
         self.terminate()
 
 
-# For ZVA - 40 
+# For ZVA - 40
+# Testing push
 class InstrumentThread(QtCore.QThread):
     signalSaveData2 = QtCore.pyqtSignal(str)
 
