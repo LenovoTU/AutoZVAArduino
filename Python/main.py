@@ -71,11 +71,31 @@ class InstrumentThread(QtCore.QThread):
         self.thread1 = MeasurmentsThread(device=self.Device)
         self.thread1.data_sent.connect(self.handle_data, QtCore.Qt.QueuedConnection)
         self.terminate = False
+        self.counter = 0
 
     def run(self):
         """
         Starts the thread and runs the measurement procedure.
         """
+        self.Instrument.write_str_with_opc(':INITiate1:CONTinuous ON')
+        self.Instrument.write_str_with_opc(':DISPlay:WINDOW:STATE ON')
+        self.Instrument.write_str_with_opc(':SYSTEM:DISPLAY:UPDATE ON')
+
+        self.Instrument.write_str_with_opc('CALCulate1:PARameter:MEAsure "Trc1", "S11"')
+        self.Instrument.write_str_with_opc('CALCulate1:PARameter:MEAsure "Trc2", "S21"')
+        self.Instrument.write_str_with_opc('CALCulate1:PARameter:MEAsure "Trc3", "S12"')
+        self.Instrument.write_str_with_opc('CALCulate1:PARameter:MEAsure "Trc4", "S22"')
+
+        self.Instrument.write_str_with_opc('CALCulate1:PARameter:SDEFine "Trc1", "S11"')  # Add a second trace
+        self.Instrument.write_str_with_opc('CALCulate1:PARameter:SDEFine "Trc2", "S21"')
+        self.Instrument.write_str_with_opc('CALCulate1:PARameter:SDEFine "Trc3", "S12"')
+        self.Instrument.write_str_with_opc('CALCulate1:PARameter:SDEFine "Trc4", "S22"')
+
+        self.Instrument.write_str_with_opc('DISPlay:WINDow:TRACe1:FEED "Trc1"')
+        self.Instrument.write_str_with_opc('DISPlay:WINDow:TRACe2:FEED "Trc2"')
+        self.Instrument.write_str_with_opc('DISPlay:WINDow:TRACe3:FEED "Trc3"')
+        self.Instrument.write_str_with_opc('DISPlay:WINDow:TRACe4:FEED "Trc4"')
+
         self.thread1.start()
 
     def handle_data(self, data):
@@ -86,39 +106,30 @@ class InstrumentThread(QtCore.QThread):
         """
         print(f"Temeperature form DS18:{data} C")
         # --------------------------
-        idn = self.Instrument.query_str('*IDN?')
-        print(f"{idn}: Calcualte parameter(S-11 .. S-22) to Trace(1 .. 4)")
-        self.Instrument.write_str_with_opc('CALCulate1:PARameter:MEAsure "Trc1", "S11"')
-        self.Instrument.write_str_with_opc('CALCulate1:PARameter:MEAsure "Trc2", "S21"')
-        self.Instrument.write_str_with_opc('CALCulate1:PARameter:MEAsure "Trc3", "S12"')
-        self.Instrument.write_str_with_opc('CALCulate1:PARameter:MEAsure "Trc4", "S22"')
-        print(f"{idn}: Create new trace and select name and measurments parameter") 
-        self.Instrument.write_str_with_opc('CALCulate1:PARameter:SDEFine "Trc1", "S11"')  # Add a second trace
-        self.Instrument.write_str_with_opc('CALCulate1:PARameter:SDEFine "Trc2", "S21"')
-        self.Instrument.write_str_with_opc('CALCulate1:PARameter:SDEFine "Trc3", "S12"')
-        self.Instrument.write_str_with_opc('CALCulate1:PARameter:SDEFine "Trc4", "S22"')
-
-        self.Instrument.write_str_with_opc('SYSTEM:DISPLAY:UPDATE ON')
-        self.Instrument.write_str_with_opc('CALCulate1:Format MLOGarithmic')  # Change active trace's format to phase
-        self.Instrument.write_str_with_opc(':INITiate1:CONTinuous ON')
-        self.Instrument.write_str_with_opc(':DISPlay:WINDOW:STATE ON')
         if data != None:
-            print("")
+            print(f"Measurment")
+
             self.Instrument.write_str_with_opc(':INITiate1:CONTinuous OFF')
             self.Instrument.write_str_with_opc(':INITiate:IMMediate')
-            self.Instrument.write_str_with_opc(':DISPlay:WINDow:TRACe1:FEED "Trc1"')
-            self.Instrument.write_str_with_opc(':DISPlay:WINDow:TRACe2:FEED "Trc2"')
-            self.Instrument.write_str_with_opc(':DISPlay:WINDow:TRACe3:FEED "Trc3"')
-            self.Instrument.write_str_with_opc(':DISPlay:WINDow:TRACe4:FEED "Trc4"')
+            idn = self.Instrument.query_str('*IDN?')
+            self.Instrument.write_str_with_opc(
+                ':CALCulate1:Format MLOGarithmic')  # Change active trace's format to phase
+            print(f"{idn}: Calcualte parameter(S-11 .. S-22) to Trace(1 .. 4)")
+            print(f"{idn}: Create new trace and select name and measurments parameter")
+
             # s2p_filename = fr'C:\Users\Public\Documents\Rohde-Schwarz\Vna\Traces\CTEM_{data}.s2p'  # Name and path of the s2p file on the instrument
-            pc_filename = fr'D:\Vitalya\CTEM_{data}.s2p'  # Name and path of the s2p file on the PC
+            # Менять название папки в которой сохраняются данные
+            dir = r'minus50'
+            pc_filename = fr'D:\Vitalya\{dir}\CTEM_{data}_{self.counter}.s2p'  # Name and path of the s2p file on the PC
+            #
+
             # self.Instrument.write_str_with_opc(r':MMEMory:CDIRectory "C:\Rohde&Schwarz\Nwa\Traces"')
             self.Instrument.write_str_with_opc(fr":MMEM:STOR:TRAC:PORT 1,  'Test.s2p', COMPlex, 1, 2")
             self.Instrument.read_file_from_instrument_to_pc('Test.s2p', pc_filename)
+            print(f"Save data {pc_filename}")
+            self.counter += 1
+            self.Instrument.write_str_with_opc(':INITiate1:CONTinuous ON')
             sleep(self.MeasTime)
-
-
-
 
 class ExampleApp(QtWidgets.QMainWindow, gui.Ui_MainWindow):
     def __init__(self):
@@ -160,8 +171,8 @@ class ExampleApp(QtWidgets.QMainWindow, gui.Ui_MainWindow):
         self.textBrowser.append(f'Try to conncect to:{connected_device}')
         resource = f'TCPIP::{connected_device}::INSTR'
         self.Instrument = RsInstrument(resource)
-        self.Instrument.visa_timeout = 15000  # Timeout for VISA Read Operations
-        self.Instrument.opc_timeout = 15000  # Timeout for opc-synchronised operations
+        self.Instrument.visa_timeout = 5000  # Timeout for VISA Read Operations
+        self.Instrument.opc_timeout = 5000  # Timeout for opc-synchronised operations
         self.Instrument.VisaTimeout = 100000
         self.Instrument.instrument_status_checking = True  # Error check after each command, can be True or False
         self.Instrument.clear_status()
