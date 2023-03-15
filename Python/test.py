@@ -1,63 +1,76 @@
-from PyQt5 import QtCore, QtWidgets
+import sys
+import time
+import json
 
-class MyThread(QtCore.QThread):
-    mysignal = QtCore.pyqtSignal(str)
-    def  __init__(self, parent=None):
-        QtCore.QThread.__init__(self, parent)
-        self.terminate = False
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QTextEdit, QVBoxLayout
+
+import visa
+import serial
+
+class ZVAThread(QObject):
+    measurement_complete = pyqtSignal(str)
+
+    def __init__(self, visa_address, parent=None):
+        super().__init__(parent)
+        self.visa_address = visa_address
+        self.zva = visa.ResourceManager().open_resource(self.visa_address)
+
+    @pyqtSlot(str)
+    def start_measurement(self, temperature):
+        self.zva.write(f'MEASURE:SCALAR {temperature}')
+        self.zva.query('*OPC?')
+        filename = f'{temperature}_measurement.csv'
+        self.zva.write(f'MMEM:STOR:TRAC:CHAN 1, "{filename}"')
+        self.measurement_complete.emit(filename)
+
+class ArduinoThread(QObject):
+    temperature_ready = pyqtSignal(str)
+
+    def __init__(self, port, parent=None):
+        super().__init__(parent)
+        self.port = port
+        self.arduino = serial.Serial(self.port, 9600, timeout=1)
+
     def run(self):
-        i = 0
-        while not self.terminate:
-            self.sleep(1)	# "Засыпаем" на 3 секунды
-            # Передача данных из потока через сигнал
-            i += 1
-            self.mysignal.emit("i = %s" % i)
+        while True:
+            rule = json.loads(self.arduino.readline().decode('utf-8'))
+            temperature = rule['temperature']
+            self.temperature_ready.emit(temperature)
+            time.sleep(rule['delay'])
 
-class MyWindow(QtWidgets.QWidget):
+class MeasurementApp(QWidget):
     def __init__(self, parent=None):
-        QtWidgets.QWidget.__init__(self, parent)
-        self.label = QtWidgets.QLabel("Нажмите кнопку для запуска потока")
-        self.label.setAlignment(QtCore.Qt.AlignHCenter)
-        self.button = QtWidgets.QPushButton("Запустить процесс")
-        self.button1 = QtWidgets.QPushButton("Остановить процесс")
-        self.vbox = QtWidgets.QVBoxLayout()
-        self.vbox.addWidget(self.label)
-        self.vbox.addWidget(self.button)
-        self.vbox.addWidget(self.button1)
-        self.setLayout(self.vbox)
-        self.mythread = MyThread()    # Создаем экземпляр класса
-        self.button.clicked.connect(self.on_clicked)
-        self.button1.clicked.connect(self.on_cliked_stop)
-        self.mythread.started.connect(self.on_started)
-        self.mythread.finished.connect(self.on_finished)
-        self.mythread.mysignal.connect(self.on_change, QtCore.Qt.QueuedConnection)
-    
-    def on_clicked(self):
-        self.button.setDisabled(True) # Делаем кнопку неактивной
-        self.button1.setDisabled(False)
-        self.mythread.start()         # Запускаем поток\
+        super().__init__(parent)
 
-    def on_cliked_stop(self):
-        self.button1.setDisabled(True)
-        self.button.setDisabled(False)
-        self.mythread.terminate = True
+        self.zva_thread = ZVAThread('GPIB0::1::INSTR')
+        self.arduino_thread = ArduinoThread('/dev/ttyACM0')
 
-    def on_started(self):	# Вызывается при запуске потока
-        self.label.setText("Вызван метод on_started ()")
+        self.start_button = QPushButton('Start Measurement')
+        self.start_button.clicked.connect(self.start_measurement)
 
-    def on_finished(self):      # Вызывается при завершении потока
-        self.label.setText("Вызван метод on_finished()")
-        self.button.setDisabled(False) # Делаем кнопку активной
-    
-    def on_change(self, s):
-        self.label.setText(s)
-        
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    window = MyWindow()
-    window.setWindowTitle("Использование класса QThread")
-    window.resize(300, 70)
-    window.show()
+        self.log_output = QTextEdit()
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.start_button)
+        layout.addWidget(self.log_output)
+
+        self.setLayout(layout)
+
+        self.arduino_thread.temperature_ready.connect(self.zva_thread.start_measurement)
+        self.zva_thread.measurement_complete.connect(self.log_measurement_complete)
+
+    def start_measurement(self):
+        self.log_output.append('Starting measurement...')
+        rule = {'temperature': '25C', 'delay': 30}
+        self.arduino_thread.arduino.write(json.dumps(rule).encode('utf-8'))
+
+    @pyqtSlot(str)
+    def log_measurement_complete(self, filename):
+        self.log_output.append(f'Measurement complete, saved to {filename}')
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    measurement_app = MeasurementApp()
+    measurement_app.show()
     sys.exit(app.exec_())
-
