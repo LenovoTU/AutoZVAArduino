@@ -37,11 +37,13 @@ class MeasurmentsThread(QtCore.QThread):
         """
         while not self.terminate:
             data = self.Device.readline().decode('utf-8').rstrip()
-            if data != None:
+            if data.strip():
+                print(f"Data:{data}")
                 # Convert the received data to a float and emit the signal with the data
                 try:
-                    self.current_temperature = float(data)
-                    self.data_sent.emit(data)
+                    self.current_temperature = data
+                    print(f"DS18 temperature is:{self.current_temperature}")
+                    self.data_sent.emit(self.current_temperature)
                 # If the received data cannot be converted to a float, do nothing
                 except ValueError:
                     pass
@@ -119,7 +121,7 @@ class InstrumentThread(QtCore.QThread):
 
             # s2p_filename = fr'C:\Users\Public\Documents\Rohde-Schwarz\Vna\Traces\CTEM_{data}.s2p'  # Name and path of the s2p file on the instrument
             # Менять название папки в которой сохраняются данные
-            dir = r'minus50'
+            dir = r'sminus50do25'
             pc_filename = fr'D:\Vitalya\{dir}\CTEM_{data}_{self.counter}.s2p'  # Name and path of the s2p file on the PC
             #
 
@@ -138,6 +140,7 @@ class ExampleApp(QtWidgets.QMainWindow, gui.Ui_MainWindow):
         self.measurements_time = {'minutes': 0,
                                   'seconds': 0,
                                   'total_seconds': 0}
+        # {'minutes': 0, 'seconds': 2, 'total_seconds': 0}
         self.current_temperature = 0
         self.process = False
         self.setupUi(self)
